@@ -97,6 +97,8 @@ const API_KEY="7qwre4IVDPRVlfPMxLyh25wFBnExIT0XictqRqLt";
 const RADAR_API="https://api-redemet.decea.mil.br/produtos/radar/10km";
 /* Endereço do serviço Python. Se hospedar o serviço, troque por sua URL HTTPS. */
 const SOUNDING_API="/api/sounding";
+/* Após publicar python_backend no Render, substitua pela URL HTTPS real, sem barra final. */
+const SHARPPY_API="https://SEU-SERVICO-SHARPPY.onrender.com";
 const $=id=>document.getElementById(id);
 let map=null,radarGroup=null,radarItems=[],frames=[],radarVisible=true,busy=false,frameIndex=0,loopTimer=null,currentTab="radar",soundingRows=[];
 function status(m){$("status").textContent=m}function soundingStatus(m){$("soundingStatus").textContent=m}
@@ -273,89 +275,4 @@ function drawSkew(){
  // Slanted isotherms
  for(let t=-80;t<=50;t+=10){
    ctx.strokeStyle=(t%20===0)?"#d6b0b0":"#eadada";
-   ctx.beginPath();ctx.moveTo(xT(t,pTop),yP(pTop));ctx.lineTo(xT(t,pBottom),yP(pBottom));ctx.stroke();
-   ctx.fillStyle="#333";ctx.fillText(t+"°",xT(t,pBottom)-10,bottom+20);
- }
- // Frame and labels
- ctx.strokeStyle="#777";ctx.strokeRect(left,top,right-left,bottom-top);
- ctx.fillStyle="#222";ctx.font="bold 18px Arial";ctx.fillText("Skew-T / Log-P",left,28);
- ctx.font="12px Arial";ctx.fillText("Pressão (hPa)",20,top-12);
- if(!soundingRows.length){
-   ctx.font="16px Arial";ctx.fillText("Consulte uma sondagem observada para desenhar o perfil.",left+18,410);
-   ctx.fillStyle="#b00";ctx.fillText("Temperatura: vermelho · Ponto de orvalho: verde · Barbelas: vento",left, H-18);
-   return;
- }
- // Thermodynamic traces
- [["t","#d62828"],["td","#17803d"]].forEach(([key,color])=>{
-   const valid=soundingRows.filter(r=>Number.isFinite(r.p)&&Number.isFinite(r[key])&&r.p>=pTop&&r.p<=pBottom);
-   if(valid.length<2)return;
-   ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=2.8;
-   valid.forEach((r,i)=>i?ctx.lineTo(xT(r[key],r.p),yP(r.p)):ctx.moveTo(xT(r[key],r.p),yP(r.p)));
-   ctx.stroke();
-   valid.forEach(r=>{ctx.beginPath();ctx.fillStyle=color;ctx.arc(xT(r[key],r.p),yP(r.p),2.2,0,Math.PI*2);ctx.fill()});
- });
- // Wind barbs: only draw when observed direction and speed are present.
- const wx=right+32;
- ctx.strokeStyle="#111";ctx.fillStyle="#111";ctx.lineWidth=1.4;
- soundingRows.filter(r=>Number.isFinite(r.wdir)&&Number.isFinite(r.wspd)&&r.p>=pTop&&r.p<=pBottom).forEach(r=>{
-   const x=wx,y=yP(r.p),rad=(r.wdir+180)*Math.PI/180;
-   const len=25,dx=Math.sin(rad)*len,dy=-Math.cos(rad)*len;
-   ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+dx,y+dy);ctx.stroke();
-   // Meteorological convention: 5 kt half barb, 10 kt full barb, 50 kt pennant.
-   let remaining=Math.round(r.wspd/5)*5, bx=x+dx,by=y+dy;
-   const ux=-dx/len,uy=-dy/len;
-   while(remaining>=50){ctx.beginPath();ctx.moveTo(bx,by);ctx.lineTo(bx+ux*12+uy*7,by+uy*12-ux*7);ctx.lineTo(bx+ux*24,by+uy*24);ctx.closePath();ctx.fill();bx+=ux*5;by+=uy*5;remaining-=50}
-   while(remaining>=10){ctx.beginPath();ctx.moveTo(bx,by);ctx.lineTo(bx+ux*12+uy*7,by+uy*12-ux*7);ctx.stroke();bx+=ux*5;by+=uy*5;remaining-=10}
-   if(remaining>=5){ctx.beginPath();ctx.moveTo(bx,by);ctx.lineTo(bx+ux*7+uy*4,by+uy*7-ux*4);ctx.stroke()}
- });
- ctx.fillStyle="#d62828";ctx.fillRect(left,H-32,14,3);ctx.fillStyle="#222";ctx.fillText("Temperatura",left+20,H-27);
- ctx.fillStyle="#17803d";ctx.fillRect(left+135,H-32,14,3);ctx.fillStyle="#222";ctx.fillText("Ponto de orvalho",left+155,H-27);
- ctx.strokeStyle="#111";ctx.beginPath();ctx.moveTo(left+310,H-30);ctx.lineTo(left+335,H-30);ctx.stroke();ctx.fillStyle="#222";ctx.fillText("Barbela de vento (quando disponível)",left+342,H-27);
-}
-function addRows(id,rows,emptyText,cols){const body=$(id);body.replaceChildren();if(!rows.length){const tr=document.createElement("tr"),td=document.createElement("td");td.colSpan=cols;td.textContent=emptyText;tr.appendChild(td);body.appendChild(tr);return}rows.forEach(row=>{const tr=document.createElement("tr");row.forEach(v=>{const td=document.createElement("td");td.textContent=v;tr.appendChild(td)});body.appendChild(tr)})}
-function clearSounding(message="Perfil limpo."){soundingRows=[];$("mStation").textContent="Nenhuma";$("mLevels").textContent="0";$("mTop").textContent="—";$("mUpdated").textContent="—";addRows("levelsBody",[],"Sem dados.",3);addRows("diagnosticBody",[],"Sem dados.",2);addRows("indicesBody",[],"Sem dados.",2);soundingStatus(message);drawSkew()}
-$("clearSounding").onclick=()=>clearSounding();
-$("loadSounding").onclick=async()=>{const station=$("stationSelect").value,date=$("soundingDate").value,hour=$("soundingHour").value;if(!date){soundingStatus("Selecione uma data UTC.");return}const btn=$("loadSounding");btn.disabled=true;clearSounding("Consultando a fonte de radiossondagens observadas...");try{const u=new URL(SOUNDING_API, window.location.origin);u.searchParams.set("station",station);u.searchParams.set("date",date);u.searchParams.set("hour",hour);let res;try{res=await fetch(u,{headers:{Accept:"application/json"},cache:"no-store"})}catch(netErr){throw Error("Não foi possível acessar "+SOUNDING_API+". Verifique se a função de sondagem está publicada corretamente na Netlify. Detalhe: "+netErr.message)}const data=await res.json().catch(()=>({}));if(!res.ok)throw Error(data.detail||data.error||"Serviço indisponível (HTTP "+res.status+").");if(!Array.isArray(data.levels)||data.levels.length<2)throw Error("A fonte não retornou níveis observados suficientes para esta data/hora.");soundingRows=data.levels.map(x=>({p:Number(x.pressure),t:Number(x.temperature),td:x.dewpoint===null||x.dewpoint===undefined?NaN:Number(x.dewpoint),wdir:x.wind_direction===null||x.wind_direction===undefined?NaN:Number(x.wind_direction),wspd:x.wind_speed===null||x.wind_speed===undefined?NaN:Number(x.wind_speed)})).filter(x=>Number.isFinite(x.p)&&Number.isFinite(x.t)&&Number.isFinite(x.td)&&x.p>=100&&x.p<=1100&&x.t>=-120&&x.t<=70&&x.td>=-120&&x.td<=70).sort((a,b)=>b.p-a.p);if(soundingRows.length<2)throw Error("Os dados recebidos não contêm pelo menos dois níveis válidos.");$("mStation").textContent=$("stationSelect").selectedOptions[0].textContent;$("mLevels").textContent=soundingRows.length;$("mTop").textContent=Math.min(...soundingRows.map(x=>x.p))+" hPa";$("mUpdated").textContent=data.observation_utc||date+" "+hour+"Z";addRows("levelsBody",soundingRows.map(x=>[x.p.toFixed(1),x.t.toFixed(1),x.td.toFixed(1)]),"Sem dados.",3);addRows("diagnosticBody",[["Níveis válidos",soundingRows.length],["Pressão mínima",Math.min(...soundingRows.map(x=>x.p)).toFixed(1)+" hPa"],["Temperatura à superfície",soundingRows[0].t.toFixed(1)+" °C"],["Ponto de orvalho à superfície",soundingRows[0].td.toFixed(1)+" °C"],["Níveis com vento",soundingRows.filter(x=>Number.isFinite(x.wdir)&&Number.isFinite(x.wspd)).length]],"Sem dados.",2);addRows("indicesBody",[],"Índices CAPE/CIN/Lifted Index não são calculados por esta versão; não serão estimados sem cálculo termodinâmico validado.",2);drawSkew();soundingStatus("Sondagem observada carregada. Fonte: "+(data.source||"serviço configurado")+".")}catch(e){clearSounding("Não foi possível obter a sondagem: "+e.message+" Nenhum perfil fictício foi desenhado.");console.error("Sondagem:",e)}finally{btn.disabled=false}};
-$("soundingSource").onclick=()=>window.open("https://weather.arcc.uwyo.edu/upperair/sounding.shtml","_blank","noopener");
-async function ensureLeaflet(){
-  if(typeof L!=="undefined")return;
-  status("Carregando biblioteca do mapa...");
-  const sources=[
-    "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js",
-    "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-  ];
-  let lastError=null;
-  for(const src of sources){
-    try{
-      await new Promise((resolve,reject)=>{
-        const script=document.createElement("script");
-        script.src=src;
-        script.async=true;
-        const timeout=setTimeout(()=>{script.remove();reject(Error("Tempo esgotado ao carregar "+src))},12000);
-        script.onload=()=>{clearTimeout(timeout);if(typeof L!=="undefined")resolve();else{script.remove();reject(Error("O arquivo carregou, mas Leaflet não foi definido: "+src))}};
-        script.onerror=()=>{clearTimeout(timeout);script.remove();reject(Error("Falha ao baixar "+src))};
-        document.head.appendChild(script);
-      });
-      return;
-    }catch(error){lastError=error;console.warn("Falha ao carregar Leaflet; tentando outra fonte.",error)}
-  }
-  throw Error("Não foi possível carregar a biblioteca Leaflet. Verifique a conexão ou bloqueadores de conteúdo. "+(lastError?lastError.message:""));
-}
-(async function start(){
-  const d=new Date();
-  $("soundingDate").value=d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")+"-"+String(d.getUTCDate()).padStart(2,"0");
-  drawSkew();
-  try{
-    await ensureLeaflet();
-    initMap();
-    if(window.__bsmsStartupFinished)window.__bsmsStartupFinished();
-    status("Mapa inicializado. Preparando radar...");
-    refreshRadar();
-    setInterval(()=>{if(currentTab==="radar")refreshRadar()},5*60*1000);
-  }catch(e){
-    if(window.__bsmsStartupFinished)window.__bsmsStartupFinished();
-    status("Erro ao iniciar mapa: "+e.message+". Verifique a conexão, o carregamento do Leaflet e o deploy da Netlify.");
-    console.error("BSMS inicialização:",e);
-  }
-})();
-</script></body></html>
+   ctx.beginPath();ctx.moveTo(xT(t,pTop),yP(pTop));ctx.lineTo(xT(t,pBottom),yP(pBottom));ctx.stroke
