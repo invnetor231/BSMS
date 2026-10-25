@@ -154,7 +154,7 @@ exports.handler = async function (event) {
   const url = new URL(UWYO_URL);
 
   url.searchParams.set("datetime", `${date} ${hour}:00:00`);
-  url.searchParams.set("id", `${station},br`);
+  url.searchParams.set("id", station);
   url.searchParams.set("type", "TEXT:LIST");
 
   const controller = new AbortController();
