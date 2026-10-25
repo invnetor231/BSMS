@@ -21,6 +21,7 @@ const STATIONS = {
   "83612": "Campo Grande",
   "83649": "Vitória",
   "83746": "Rio de Janeiro / Galeão",
+  "83779": "São Paulo / Marte",
   "83780": "São Paulo / Congonhas",
   "83840": "Curitiba",
   "83899": "Florianópolis",
@@ -28,7 +29,7 @@ const STATIONS = {
   "83971": "Porto Alegre"
 };
 
-const UWYO_URL = "https://weather.arcc.uwyo.edu/wsgi/sounding";
+const UWYO_URL = "https://weather.uwyo.edu/wsgi/sounding";
 
 function jsonResponse(statusCode, body) {
   return {
@@ -39,6 +40,21 @@ function jsonResponse(statusCode, body) {
     },
     body: JSON.stringify(body)
   };
+}
+
+function decodeHtml(text) {
+  return text
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#(\d+);/g, (_, n) =>
+      String.fromCodePoint(Number(n))
+    )
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) =>
+      String.fromCodePoint(parseInt(n, 16))
+    );
 }
 
 function parseSounding(text) {
@@ -83,10 +99,12 @@ function parseSounding(text) {
         dewpoint <= temperature
           ? dewpoint
           : null,
-      wind_direction: Number.isFinite(direction) ? direction : null,
-      wind_speed: Number.isFinite(knots)
-        ? knots * 0.514444
-        : null
+      wind_direction:
+        Number.isFinite(direction) ? direction : null,
+      wind_speed:
+        Number.isFinite(knots) && knots >= 0
+          ? knots * 0.514444
+          : null
     });
   }
 
@@ -111,7 +129,6 @@ exports.handler = async function (event) {
   }
 
   const params = event.queryStringParameters || {};
-
   const station = String(params.station || "");
   const date = String(params.date || "");
   const hour = String(params.hour || "");
@@ -152,16 +169,13 @@ exports.handler = async function (event) {
   }
 
   const url = new URL(UWYO_URL);
-
   url.searchParams.set("datetime", `${date} ${hour}:00:00`);
   url.searchParams.set("id", station);
+  url.searchParams.set("src", "UNKNOWN");
   url.searchParams.set("type", "TEXT:LIST");
 
   const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
-    20000
-  );
+  const timeout = setTimeout(() => controller.abort(), 20000);
 
   try {
     const response = await fetch(url.toString(), {
@@ -177,29 +191,23 @@ exports.handler = async function (event) {
     if (!response.ok) {
       return jsonResponse(502, {
         error: `A fonte de radiossondagens respondeu HTTP ${response.status}.`,
-        source: "University of Wyoming",
+        source_status: response.status,
         station: STATIONS[station],
+        station_id: station,
         date,
         hour
       });
     }
 
     const match = page.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
-
-    const rawText = match
-      ? match[1]
-          .replace(/<[^>]+>/g, " ")
-          .replace(/&nbsp;/g, " ")
-          .replace(/&amp;/g, "&")
-          .replace(/&lt;/g, "<")
-          .replace(/&gt;/g, ">")
-      : page.replace(/<[^>]+>/g, "\n");
+    const rawText = decodeHtml(match ? match[1] : page);
 
     const levels = parseSounding(rawText);
 
     if (levels.length < 2) {
       return jsonResponse(404, {
-        error: "A fonte não retornou níveis válidos para esta estação, data e horário.",
+        error:
+          "A fonte respondeu, mas não foram encontrados níveis válidos. A sondagem pode não estar disponível para esta estação, data e horário.",
         station: STATIONS[station],
         station_id: station,
         date,
@@ -212,8 +220,7 @@ exports.handler = async function (event) {
       source: "University of Wyoming",
       station: STATIONS[station],
       station_id: station,
-      date,
-      hour,
+      observation_utc: `${date} ${hour}Z`,
       count: levels.length,
       levels
     });
@@ -223,13 +230,10 @@ exports.handler = async function (event) {
         error && error.name === "AbortError"
           ? "A fonte de radiossondagens demorou demais para responder. Tente novamente."
           : "Não foi possível consultar a fonte de radiossondagens.",
-      detail:
-        error && error.message
-          ? error.message
-          : String(error)
+      detail: error?.message || String(error)
     });
   } finally {
     clearTimeout(timeout);
   }
 };
-        
+  
