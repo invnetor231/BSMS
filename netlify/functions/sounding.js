@@ -28,7 +28,7 @@ const STATIONS = {
   "83971": "Porto Alegre"
 };
 
-const UWYO_URL = "https://weather.uwyo.edu/wsgi/sounding";
+const UWYO_URL = "https://weather.arcc.uwyo.edu/wsgi/sounding";
 
 function jsonResponse(statusCode, body) {
   return {
