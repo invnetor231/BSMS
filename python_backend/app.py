@@ -1,8 +1,7 @@
-"""Backend termodinâmico do BSMS usando MetPy, sem dependência Git do SHARPpy."""
+"""BSMS SHARPpy API. Recebe níveis observados; não gera perfis sintéticos."""
 import math
 import os
 import warnings
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
@@ -13,28 +12,20 @@ CORS(app, resources={r"/indices": {"origins": os.getenv("ALLOWED_ORIGIN", "*")}}
 
 def finite(value):
     try:
-        number = float(value)
-        return number if math.isfinite(number) else None
+        n = float(value)
+        return n if math.isfinite(n) else None
     except (TypeError, ValueError):
         return None
 
 
-def rounded(value, digits=1):
-    try:
-        number = float(value)
-        return round(number, digits) if math.isfinite(number) else None
-    except (TypeError, ValueError):
-        return None
+def safe(value, digits=1):
+    n = finite(value)
+    return round(n, digits) if n is not None else None
 
 
 @app.get("/")
 def health():
-    return jsonify({
-        "service": "BSMS MetPy API",
-        "status": "ok",
-        "endpoint": "POST /indices",
-        "engine": "MetPy"
-    })
+    return jsonify({"service": "BSMS SHARPpy", "status": "ok", "endpoint": "POST /indices"})
 
 
 @app.post("/indices")
@@ -42,143 +33,86 @@ def indices():
     payload = request.get_json(silent=True) or {}
     rows = payload.get("levels")
     if not isinstance(rows, list) or len(rows) < 10:
-        return jsonify({"error": "A sondagem precisa conter pelo menos 10 níveis observados."}), 422
-
+        return jsonify({"error": "A sondagem precisa conter pelo menos 10 níveis observados para análise termodinâmica."}), 422
     try:
         import numpy as np
-        import metpy.calc as mpcalc
-        from metpy.units import units
+        from sharppy.sharptab import profile, params, thermo
     except Exception as exc:
-        app.logger.exception("MetPy import failed")
-        return jsonify({
-            "error": "MetPy não está disponível no serviço.",
-            "detail": str(exc)
-        }), 503
+        app.logger.exception("SHARPpy import failed")
+        return jsonify({"error": "SHARPpy não está disponível no serviço.", "detail": str(exc)}), 503
 
+    # Requer altura geopotencial real da fonte. Não estimar silenciosamente alturas ausentes.
     cleaned = []
-    for row in rows:
-        if not isinstance(row, dict):
+    for r in rows:
+        if not isinstance(r, dict):
             continue
-        pressure = finite(row.get("pressure"))
-        temperature = finite(row.get("temperature"))
-        dewpoint = finite(row.get("dewpoint"))
-        if pressure is None or temperature is None or dewpoint is None:
+        p, h, t, td = (finite(r.get(k)) for k in ("pressure", "height", "temperature", "dewpoint"))
+        if p is None or h is None or t is None or td is None:
             continue
-        if not (100 <= pressure <= 1100 and -120 <= temperature <= 70 and -120 <= dewpoint <= 70):
+        if not (100 <= p <= 1100 and -120 <= t <= 70 and -120 <= td <= 70 and -1000 <= h <= 50000):
             continue
-        # Corrige apenas pequenas inconsistências físicas de Td > T no dado recebido.
-        if dewpoint > temperature:
-            if dewpoint - temperature <= 2:
-                dewpoint = temperature
-            else:
-                continue
-        cleaned.append((pressure, temperature, dewpoint))
+        if td > t + 0.5:
+            td = t
+        direction = finite(r.get("wind_direction"))
+        speed_ms = finite(r.get("wind_speed"))
+        # API sounding.js fornece velocidade em m/s; SHARPpy espera nós.
+        speed_kt = speed_ms / 0.514444 if speed_ms is not None and speed_ms >= 0 else -9999.
+        cleaned.append((p, h, t, td, direction if direction is not None and 0 <= direction <= 360 else -9999., speed_kt if speed_kt >= 0 else -9999.))
 
-    cleaned.sort(key=lambda item: item[0], reverse=True)
+    # Remove duplicatas de pressão e ordena da superfície para o topo.
+    cleaned.sort(key=lambda x: x[0], reverse=True)
     unique = []
     seen = set()
     for row in cleaned:
         key = round(row[0], 2)
         if key not in seen:
-            unique.append(row)
-            seen.add(key)
-
+            unique.append(row); seen.add(key)
     if len(unique) < 10:
-        return jsonify({
-            "error": "Níveis observados válidos insuficientes (mínimo 10). Nenhum perfil foi inventado."
-        }), 422
+        return jsonify({"error": "Níveis insuficientes com pressão, temperatura, ponto de orvalho e altura observada. Nenhum valor foi inventado."}), 422
 
-    p = np.array([r[0] for r in unique], dtype=float) * units.hPa
-    t = np.array([r[1] for r in unique], dtype=float) * units.degC
-    td = np.array([r[2] for r in unique], dtype=float) * units.degC
-
-    output = []
-
-    def add(label, value, unit="", digits=1):
-        val = rounded(value, digits)
-        output.append({
-            "name": label,
-            "value": val,
-            "unit": unit,
-            "available": val is not None
-        })
-
-    def scalar(value):
-        try:
-            return float(np.asarray(value.magnitude).reshape(-1)[0])
-        except Exception:
+    p = np.array([x[0] for x in unique], dtype=float)
+    h = np.array([x[1] for x in unique], dtype=float)
+    t = np.array([x[2] for x in unique], dtype=float)
+    td = np.array([x[3] for x in unique], dtype=float)
+    wd = np.array([x[4] for x in unique], dtype=float)
+    ws = np.array([x[5] for x in unique], dtype=float)
+    try:
+        prof = profile.create_profile(profile="convective", pres=p, hght=h, tmpc=t, dwpc=td,
+                                      wdir=wd, wspd=ws, missing=-9999., strictQC=False,
+                                      location=str(payload.get("station_name", "BSMS")))
+        out = []
+        def add(label, value, unit="", digits=1):
+            v = safe(value, digits)
+            out.append({"name": label, "value": v, "unit": unit, "available": v is not None})
+        # Parcelas padrão SHARPpy: superfície, camada mista de 100 hPa e mais instável nos 300 hPa inferiores.
+        parcel_specs = [("SBCAPE", 1), ("MLCAPE", 4), ("MUCAPE", 3)]
+        for name, flag in parcel_specs:
             try:
-                return float(value)
+                parcel = params.DefineParcel(prof, flag=flag, **({"pres": 300} if flag == 3 else {}))
+                lifted = params.cape(prof, lplvals=parcel)
+                add(name, lifted.bplus, "J/kg", 0)
+                add(name.replace("CAPE", "CIN"), lifted.bminus, "J/kg", 0)
+                if name == "SBCAPE":
+                    add("LCL superfície", lifted.lclpres, "hPa", 1)
+                    add("LFC superfície", lifted.lfcpres, "hPa", 1)
+                    add("Nível de equilíbrio (EL)", lifted.elpres, "hPa", 1)
+                    add("Lifted Index 500 hPa (LI)", lifted.li5, "°C", 1)
             except Exception:
-                return None
-
-    # MetPy trabalha diretamente com pressão, temperatura e ponto de orvalho observados.
-    try:
-        parcel = mpcalc.parcel_profile(p, t[0], td[0])
-        sbcape, sbcin = mpcalc.cape_cin(p, t, td, parcel)
-        add("SBCAPE", scalar(sbcape), "J/kg", 0)
-        add("SBCIN", scalar(sbcin), "J/kg", 0)
-        lcl_p, lcl_t = mpcalc.lcl(p[0], t[0], td[0])
-        add("LCL superfície", scalar(lcl_p.to("hPa")), "hPa", 1)
-
-        # Lifted Index: temperatura ambiente menos temperatura da parcela a 500 hPa.
-        p_hpa = p.to("hPa").magnitude
-        env_c = t.to("degC").magnitude
-        parcel_c = parcel.to("degC").magnitude
-        if np.min(p_hpa) <= 500 <= np.max(p_hpa):
-            env500 = float(np.interp(np.log(500.0), np.log(p_hpa[::-1]), env_c[::-1]))
-            parcel500 = float(np.interp(np.log(500.0), np.log(p_hpa[::-1]), parcel_c[::-1]))
-            add("Lifted Index 500 hPa (LI)", env500 - parcel500, "°C", 1)
-        else:
-            add("Lifted Index 500 hPa (LI)", None, "°C")
-    except Exception:
-        app.logger.exception("Surface parcel calculation failed")
-        add("SBCAPE", None, "J/kg", 0)
-        add("SBCIN", None, "J/kg", 0)
-        add("LCL superfície", None, "hPa")
-        add("Lifted Index 500 hPa (LI)", None, "°C")
-
-    try:
-        mlcape, mlcin = mpcalc.mixed_layer_cape_cin(p, t, td, depth=100 * units.hPa)
-        add("MLCAPE", scalar(mlcape), "J/kg", 0)
-        add("MLCIN", scalar(mlcin), "J/kg", 0)
-    except Exception:
-        add("MLCAPE", None, "J/kg", 0)
-        add("MLCIN", None, "J/kg", 0)
-
-    try:
-        mucape, mucin = mpcalc.most_unstable_cape_cin(p, t, td, depth=300 * units.hPa)
-        add("MUCAPE", scalar(mucape), "J/kg", 0)
-        add("MUCIN", scalar(mucin), "J/kg", 0)
-    except Exception:
-        add("MUCAPE", None, "J/kg", 0)
-        add("MUCIN", None, "J/kg", 0)
-
-    try:
-        add("Índice K", scalar(mpcalc.k_index(p, t, td).to("degC")), "°C", 1)
-    except Exception:
-        add("Índice K", None, "°C")
-
-    try:
-        add("Total Totals (TT)", scalar(mpcalc.total_totals_index(p, t, td).to("degC")), "°C", 1)
-    except Exception:
-        add("Total Totals (TT)", None, "°C")
-
-    try:
-        pw = mpcalc.precipitable_water(p, td)
-        add("Água precipitável", scalar(pw.to("inch")), "in", 2)
-    except Exception:
-        add("Água precipitável", None, "in", 2)
-
-    return jsonify({
-        "engine": "MetPy",
-        "station": payload.get("station_name"),
-        "observation_utc": payload.get("observation_utc"),
-        "levels_used": len(unique),
-        "indices": output,
-        "note": "Cálculos feitos com MetPy a partir dos níveis observados recebidos. Índices sem dados suficientes são marcados como indisponíveis; nenhum perfil foi inventado."
-    })
-
+                add(name, None, "J/kg")
+                add(name.replace("CAPE", "CIN"), None, "J/kg")
+        try: add("Índice K", params.k_index(prof), "°C")
+        except Exception: add("Índice K", None, "°C")
+        try: add("Total Totals (TT)", params.t_totals(prof), "°C")
+        except Exception: add("Total Totals (TT)", None, "°C")
+        try: add("Água precipitável", params.precip_water(prof), "in", 2)
+        except Exception: add("Água precipitável", None, "in", 2)
+        return jsonify({"engine": "SHARPpy", "station": payload.get("station_name"),
+                        "observation_utc": payload.get("observation_utc"),
+                        "levels_used": len(unique), "indices": out,
+                        "note": "Índices calculados com os níveis observados recebidos. Índices sem dados suficientes aparecem indisponíveis."})
+    except Exception as exc:
+        app.logger.exception("Thermodynamic calculation failed")
+        return jsonify({"error": "Não foi possível calcular os índices desta sondagem.", "detail": str(exc)}), 422
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "8000")))
