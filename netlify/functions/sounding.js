@@ -1,4 +1,3 @@
-
 const STATIONS = {
   "82022": "Boa Vista",
   "82099": "Macapá",
@@ -21,7 +20,6 @@ const STATIONS = {
   "83612": "Campo Grande",
   "83649": "Vitória",
   "83746": "Rio de Janeiro / Galeão",
-  "83779": "São Paulo / Marte",
   "83780": "São Paulo / Congonhas",
   "83840": "Curitiba",
   "83899": "Florianópolis",
@@ -31,209 +29,233 @@ const STATIONS = {
 
 const UWYO_URL = "https://weather.uwyo.edu/wsgi/sounding";
 
-function jsonResponse(statusCode, body) {
+function json(statusCode, body) {
   return {
     statusCode,
     headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store"
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff"
     },
     body: JSON.stringify(body)
   };
 }
 
-function decodeHtml(text) {
-  return text
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
+function num(value) {
+  if (
+    value == null ||
+    ["", "-", "/////", "99999", "9999"].includes(String(value).trim())
+  ) {
+    return null;
+  }
+
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function stripHtml(html) {
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<\/(?:pre|tr|p|div|br|table|h[1-6])\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
-    .replace(/&#(\d+);/g, (_, n) =>
-      String.fromCodePoint(Number(n))
-    )
-    .replace(/&#x([0-9a-f]+);/gi, (_, n) =>
-      String.fromCodePoint(parseInt(n, 16))
-    );
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'");
 }
 
-function parseSounding(text) {
-  const rows = [];
-
-  for (const line of text.replace(/\r/g, "").split("\n")) {
-    const trimmed = line.trim();
-
-    if (
-      !trimmed ||
-      /^(PRES|PRESSURE|hPa|-----|Station|Observation|Showalter|LIFT|CAPE|CIN)/i.test(trimmed)
-    ) {
-      continue;
-    }
-
-    const fields = trimmed.split(/\s+/);
-    if (fields.length < 4) continue;
-
-    const pressure = Number(fields[0]);
-    const temperature = Number(fields[2]);
-    const dewpoint = Number(fields[3]);
-
-    if (
-      !Number.isFinite(pressure) ||
-      pressure <= 0 ||
-      !Number.isFinite(temperature) ||
-      temperature < -150 ||
-      temperature > 80
-    ) {
-      continue;
-    }
-
-    const direction = Number(fields[6]);
-    const knots = Number(fields[7]);
-
-    rows.push({
-      pressure,
-      temperature,
-      dewpoint:
-        Number.isFinite(dewpoint) &&
-        dewpoint >= -150 &&
-        dewpoint <= temperature
-          ? dewpoint
-          : null,
-      wind_direction:
-        Number.isFinite(direction) ? direction : null,
-      wind_speed:
-        Number.isFinite(knots) && knots >= 0
-          ? knots * 0.514444
-          : null
-    });
-  }
-
-  const unique = new Map();
-
-  for (const row of rows) {
-    if (!unique.has(row.pressure)) {
-      unique.set(row.pressure, row);
-    }
-  }
-
-  return [...unique.values()].sort(
-    (a, b) => b.pressure - a.pressure
-  );
-}
-
-exports.handler = async function (event) {
+exports.handler = async (event) => {
   if (event.httpMethod !== "GET") {
-    return jsonResponse(405, {
-      error: "Use uma requisição GET."
+    return json(405, {
+      error: "Método não permitido. Use GET."
     });
   }
 
-  const params = event.queryStringParameters || {};
-  const station = String(params.station || "");
-  const date = String(params.date || "");
-  const hour = String(params.hour || "");
+  const query = event.queryStringParameters || {};
+
+  const station = String(query.station || "");
+  const dateUtc = String(query.date || "");
+  const hour = String(query.hour || "");
 
   if (!Object.prototype.hasOwnProperty.call(STATIONS, station)) {
-    return jsonResponse(400, {
-      error: "Estação inválida ou não cadastrada."
+    return json(400, {
+      error: "Estação WMO não reconhecida."
     });
   }
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return jsonResponse(400, {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(dateUtc) ||
+    Number.isNaN(Date.parse(`${dateUtc}T00:00:00Z`)) ||
+    new Date(`${dateUtc}T00:00:00Z`)
+      .toISOString()
+      .slice(0, 10) !== dateUtc
+  ) {
+    return json(400, {
       error: "Data inválida. Use AAAA-MM-DD."
     });
   }
 
-  if (!["00", "12"].includes(hour)) {
-    return jsonResponse(400, {
-      error: "Horário inválido. Use 00 ou 12 UTC."
+  if (hour !== "00" && hour !== "12") {
+    return json(400, {
+      error: "A hora deve ser 00 ou 12 UTC."
     });
   }
 
-  const requested = new Date(`${date}T${hour}:00:00Z`);
+  const chosenDate = new Date(`${dateUtc}T00:00:00Z`);
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
 
-  if (
-    Number.isNaN(requested.getTime()) ||
-    requested.toISOString().slice(0, 10) !== date
-  ) {
-    return jsonResponse(400, {
-      error: "Data inexistente."
-    });
-  }
-
-  if (requested.getTime() > Date.now()) {
-    return jsonResponse(400, {
-      error: "O horário selecionado ainda está no futuro (UTC)."
+  if (chosenDate > today) {
+    return json(400, {
+      error: "A data selecionada está no futuro."
     });
   }
 
   const url = new URL(UWYO_URL);
-  url.searchParams.set("datetime", `${date} ${hour}:00:00`);
+
+  url.searchParams.set("datetime", `${dateUtc} ${hour}:00:00`);
   url.searchParams.set("id", station);
-  url.searchParams.set("src", "UNKNOWN");
   url.searchParams.set("type", "TEXT:LIST");
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
+  let response;
 
   try {
-    const response = await fetch(url.toString(), {
+    response = await fetch(url, {
       headers: {
-        "User-Agent": "BSMS-Monitoramento-Meteorologico/1.0",
-        "Accept": "text/html,text/plain;q=0.9,*/*;q=0.8"
+        "user-agent": "BSMS-Radiossondagens/1.0",
+        "accept": "text/html,text/plain,*/*"
       },
-      signal: controller.signal
-    });
-
-    const page = await response.text();
-
-    if (!response.ok) {
-      return jsonResponse(502, {
-        error: `A fonte de radiossondagens respondeu HTTP ${response.status}.`,
-        source_status: response.status,
-        station: STATIONS[station],
-        station_id: station,
-        date,
-        hour
-      });
-    }
-
-    const match = page.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
-    const rawText = decodeHtml(match ? match[1] : page);
-
-    const levels = parseSounding(rawText);
-
-    if (levels.length < 2) {
-      return jsonResponse(404, {
-        error:
-          "A fonte respondeu, mas não foram encontrados níveis válidos. A sondagem pode não estar disponível para esta estação, data e horário.",
-        station: STATIONS[station],
-        station_id: station,
-        date,
-        hour,
-        levels: []
-      });
-    }
-
-    return jsonResponse(200, {
-      source: "University of Wyoming",
-      station: STATIONS[station],
-      station_id: station,
-      observation_utc: `${date} ${hour}Z`,
-      count: levels.length,
-      levels
+      signal: AbortSignal.timeout(25000)
     });
   } catch (error) {
-    return jsonResponse(502, {
-      error:
-        error && error.name === "AbortError"
-          ? "A fonte de radiossondagens demorou demais para responder. Tente novamente."
-          : "Não foi possível consultar a fonte de radiossondagens.",
-      detail: error?.message || String(error)
+    return json(502, {
+      error: "Falha ao conectar à fonte de radiossondagens. Tente novamente mais tarde."
     });
-  } finally {
-    clearTimeout(timeout);
   }
+
+  if (!response.ok) {
+    return json(502, {
+      error: `A fonte de radiossondagens respondeu HTTP ${response.status}.`
+    });
+  }
+
+  const html = await response.text();
+  const body = stripHtml(html);
+
+  if (
+    /no data available|no data found|no sounding|not found|no observations/i.test(body)
+  ) {
+    return json(404, {
+      error: "Não há radiossondagem disponível para esta estação, data e hora."
+    });
+  }
+
+  const levels = [];
+  const seenPressures = new Set();
+
+  for (const rawLine of body.split(/\r?\n/)) {
+    const line = rawLine.trim();
+
+    if (!/^\d{2,4}(?:\.\d+)?\s/.test(line)) {
+      continue;
+    }
+
+    const fields = line.split(/\s+/);
+
+    if (fields.length < 4) {
+      continue;
+    }
+
+    const pressure = num(fields[0]);
+    const height = num(fields[1]);
+    const temperature = num(fields[2]);
+    const dewpoint = num(fields[3]);
+
+    // Só aceitar níveis com os quatro parâmetros necessários.
+    if (
+      pressure == null ||
+      height == null ||
+      temperature == null ||
+      dewpoint == null
+    ) {
+      continue;
+    }
+
+    if (
+      pressure < 100 ||
+      pressure > 1100 ||
+      height < -500 ||
+      height > 60000 ||
+      temperature < -120 ||
+      temperature > 70 ||
+      dewpoint < -120 ||
+      dewpoint > 70
+    ) {
+      continue;
+    }
+
+    // Evitar duplicatas de pressão.
+    const pressureKey = pressure.toFixed(1);
+
+    if (seenPressures.has(pressureKey)) {
+      continue;
+    }
+
+    seenPressures.add(pressureKey);
+
+    const level = {
+      pressure,
+      height,
+      temperature,
+      dewpoint
+    };
+
+    const direction = num(fields[6]);
+    const windKnots = num(fields[7]);
+
+    if (
+      direction != null &&
+      direction >= 0 &&
+      direction <= 360
+    ) {
+      level.wind_direction = direction;
+    }
+
+    if (
+      windKnots != null &&
+      windKnots >= 0 &&
+      windKnots <= 250
+    ) {
+      // Converter nós para metros por segundo.
+      level.wind_speed = windKnots * 0.514444;
+    }
+
+    levels.push(level);
+  }
+
+  // Ordenar da maior para a menor pressão.
+  levels.sort((a, b) => b.pressure - a.pressure);
+
+  if (levels.length < 10) {
+    return json(422, {
+      error: `A fonte retornou apenas ${levels.length} níveis observados válidos; são necessários pelo menos 10.`,
+      station,
+      station_name: STATIONS[station],
+      observation_utc: `${dateUtc} ${hour}Z`,
+      levels_received: levels.length,
+      source: "University of Wyoming Atmospheric Science Radiosonde Archive (TEXT:LIST)"
+    });
+  }
+
+  return json(200, {
+    station,
+    station_name: STATIONS[station],
+    observation_utc: `${dateUtc} ${hour}Z`,
+    source: "University of Wyoming Atmospheric Science Radiosonde Archive (TEXT:LIST)",
+    source_url: "https://weather.arcc.uwyo.edu/upperair/sounding.shtml",
+    levels
+  });
 };
-  
