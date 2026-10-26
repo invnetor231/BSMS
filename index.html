@@ -98,7 +98,7 @@ const RADAR_API="https://api-redemet.decea.mil.br/produtos/radar/10km";
 /* Endereço do serviço Python. Se hospedar o serviço, troque por sua URL HTTPS. */
 const SOUNDING_API="/api/sounding";
 /* Após publicar python_backend no Render, substitua pela URL HTTPS real, sem barra final. */
-const SHARPPY_API="https://SEU-SERVICO-SHARPPY.onrender.com";
+const SHARPPY_API="https://bsms-gntn.onrender.com";
 const $=id=>document.getElementById(id);
 let map=null,radarGroup=null,radarItems=[],frames=[],radarVisible=true,busy=false,frameIndex=0,loopTimer=null,currentTab="radar",soundingRows=[];
 function status(m){$("status").textContent=m}function soundingStatus(m){$("soundingStatus").textContent=m}
