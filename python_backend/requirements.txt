@@ -1,5 +1,7 @@
 
-Flask>=3.0,<4
-flask-cors>=4.0,<6
-numpy>=1.24,<2.3
-gunicorn>=22,<24
+Flask
+flask-cors
+numpy<2
+scipy
+matplotlib
+git+https://github.com/sharppy/SHARPpy.git
