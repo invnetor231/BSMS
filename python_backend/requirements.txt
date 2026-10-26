@@ -1,5 +1,4 @@
 Flask>=3.0,<4
 flask-cors>=4.0,<6
 numpy>=1.24,<2.3
-sharppy @ git+https://github.com/sharppy/SHARPpy.git
 gunicorn>=22,<24
