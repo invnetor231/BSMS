@@ -4,4 +4,3 @@ flask-cors
 numpy<2
 scipy
 matplotlib
-git+https://github.com/sharppy/SHARPpy.git
