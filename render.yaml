@@ -10,4 +10,4 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: ALLOWED_ORIGIN
-        value: https://bsms1.netlify.app
+        value: https://bsms-montioramento.netlify.app
