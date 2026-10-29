@@ -21,11 +21,48 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{border:1px solid 
 th{color:var(--yellow);background:#292929}footer{padding:12px;border-top:1px solid #333;color:#aaa;font-size:11px}
 a{color:var(--yellow)}.statusline{padding:10px;background:#151515;border-left:3px solid var(--yellow);margin:10px 0}
 @media(max-width:600px){.logo{font-size:25px}#map{height:calc(100dvh - 300px)}}
+.mainHeader{justify-content:space-between;flex-wrap:wrap}
+.brand{display:flex;gap:12px;align-items:center;min-width:0}
+.supportButton{background:var(--yellow);color:#111;font-weight:bold;border:0;white-space:nowrap}
+.supportModal{position:fixed;inset:0;z-index:10000;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.78)}
+.supportModal.open{display:flex}
+.supportCard{width:min(100%,420px);background:#171717;color:#eee;border:1px solid var(--yellow);border-radius:12px;padding:20px;box-shadow:0 12px 40px #000}
+.supportCard h2{margin:0 0 8px;color:var(--yellow)}
+.supportCard p{line-height:1.45;color:#ddd}
+.supportAmounts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0}
+.supportAmounts button{font-weight:bold}
+.supportAmounts button.selected{background:var(--yellow);color:#111;border-color:var(--yellow)}
+.pixKey{padding:11px;background:#090909;border:1px solid #444;border-radius:6px;overflow-wrap:anywhere;font-size:13px;user-select:all}
+.supportActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.supportActions button{flex:1}
+.supportNote{font-size:12px!important;color:#aaa!important}
+#supportFeedback{min-height:18px;color:var(--yellow);font-size:13px}
+@media(max-width:420px){.mainHeader{align-items:flex-start}.brand{flex:1}.supportButton{width:100%}}
 </style>
 </head>
 <body>
-<header><div class="logo">BSMS</div><div><b>MONITORAMENTO METEOROLÓGICO</b><div class="subtitle">RADAR + WRF + SKEW-T</div></div></header>
+<header class="mainHeader"><div class="brand"><div class="logo">BSMS</div><div><b>MONITORAMENTO METEOROLÓGICO</b><div class="subtitle">RADAR + WRF + SKEW-T</div></div></div><button id="supportButton" class="supportButton" type="button">♡ APOIAR</button></header>
 <nav><button id="radarButton" class="active">Radar</button><button id="wrfButton">WRF CPTEC</button><button id="skewButton">Skew-T</button></nav>
+<div id="supportModal" class="supportModal" role="dialog" aria-modal="true" aria-labelledby="supportTitle">
+  <div class="supportCard">
+    <h2 id="supportTitle">Apoie o BSMS</h2>
+    <p>Seu apoio ajuda a manter o monitoramento meteorológico. Escolha um valor sugerido e faça o Pix pelo aplicativo do seu banco.</p>
+    <div class="supportAmounts" aria-label="Valor sugerido">
+      <button type="button" data-amount="5">R$ 5</button>
+      <button type="button" data-amount="10" class="selected">R$ 10</button>
+      <button type="button" data-amount="20">R$ 20</button>
+      <button type="button" data-amount="50">R$ 50</button>
+    </div>
+    <p><strong>Chave Pix</strong></p>
+    <div id="pixKey" class="pixKey">94d26618-b39b-4cc2-9100-4c9d43226099</div>
+    <div class="supportActions">
+      <button type="button" id="copyPix" class="primary">Copiar chave Pix</button>
+      <button type="button" id="closeSupport">Fechar</button>
+    </div>
+    <p id="supportFeedback" role="status" aria-live="polite"></p>
+    <p class="supportNote">O valor selecionado é apenas uma sugestão. Para concluir, abra o app do seu banco, faça um Pix usando a chave acima e confira o nome do destinatário antes de confirmar. O BSMS não recebe confirmação automática do pagamento.</p>
+  </div>
+</div>
 <div id="radarControls">
  <div class="toolbar"><button id="refresh" class="primary">Atualizar radar</button><button id="toggle">Ocultar refletividade</button><select id="radarSelect"><option value="all">Todos os radares</option></select></div>
  <div class="loopbar"><button id="playLoop">▶ Iniciar loop</button><button id="previousFrame">◀ Anterior</button><button id="nextFrame">Próximo ▶</button><button id="stopLoop">Parar loop</button><select id="loopSpeed"><option value="1200">Lento</option><option value="700" selected>Normal</option><option value="350">Rápido</option></select><span id="loopInfo" class="small">Aguardando imagens</span></div>
@@ -98,8 +135,34 @@ const RADAR_API="https://api-redemet.decea.mil.br/produtos/radar/10km";
 /* Endereço do serviço Python. Se hospedar o serviço, troque por sua URL HTTPS. */
 const SOUNDING_API="/api/sounding";
 /* Após publicar python_backend no Render, substitua pela URL HTTPS real, sem barra final. */
-const SHARPPY_API="https://bsms-gntn.onrender.com";
+const SHARPPY_API="https://SEU-SERVICO-SHARPPY.onrender.com";
 const $=id=>document.getElementById(id);
+// Apoio voluntário via Pix. O pagamento é autorizado pelo usuário no app bancário.
+let supportAmount="10";
+$("supportButton").addEventListener("click",()=>{$("supportModal").classList.add("open");$("supportFeedback").textContent="";});
+$("closeSupport").addEventListener("click",()=> $("supportModal").classList.remove("open"));
+$("supportModal").addEventListener("click",e=>{if(e.target===$("supportModal"))$("supportModal").classList.remove("open");});
+document.addEventListener("keydown",e=>{if(e.key==="Escape")$("supportModal").classList.remove("open");});
+document.querySelectorAll("[data-amount]").forEach(button=>button.addEventListener("click",()=>{
+  supportAmount=button.dataset.amount;
+  document.querySelectorAll("[data-amount]").forEach(b=>b.classList.toggle("selected",b===button));
+  $("supportFeedback").textContent="Valor sugerido selecionado: R$ "+supportAmount+".";
+}));
+$("copyPix").addEventListener("click",async()=>{
+  const key="94d26618-b39b-4cc2-9100-4c9d43226099";
+  try{
+    if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(key);}
+    else{
+      const field=document.createElement("textarea");field.value=key;field.style.position="fixed";field.style.opacity="0";
+      document.body.appendChild(field);field.select();
+      const copied=document.execCommand("copy");field.remove();
+      if(!copied)throw Error("cópia não permitida");
+    }
+    $("supportFeedback").textContent="Chave Pix copiada. Valor sugerido: R$ "+supportAmount+".";
+  }catch(err){
+    $("supportFeedback").textContent="Não foi possível copiar automaticamente. Selecione e copie a chave acima.";
+  }
+});
 let map=null,radarGroup=null,radarItems=[],frames=[],radarVisible=true,busy=false,frameIndex=0,loopTimer=null,currentTab="radar",soundingRows=[];
 function status(m){$("status").textContent=m}function soundingStatus(m){$("soundingStatus").textContent=m}
 function initMap(){if(map)return true;if(typeof L==="undefined")throw Error("Biblioteca Leaflet não carregou.");map=L.map("map").setView([-14.2,-51.9],4);L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap contributors"}).addTo(map);radarGroup=L.layerGroup().addTo(map);map.whenReady(()=>status("Mapa pronto. Preparando consulta à REDEMET..."));return true}
