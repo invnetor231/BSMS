@@ -74,7 +74,7 @@ a{color:var(--yellow)}.statusline{padding:10px;background:#151515;border-left:3p
   </div>
 </div>
 <div id="radarControls">
- <div class="toolbar"><button id="refresh" class="primary">Atualizar radar</button><button id="toggle">Ocultar refletividade</button><select id="radarSelect"><option value="all">Todos os radares</option></select></div>
+ <div class="toolbar"><button id="refresh" class="primary">Atualizar radar</button><button id="toggle">Ocultar refletividade</button><select id="radarProduct" aria-label="Produto de radar"><option value="reflectivity">Reflectividade 10 km</option><option value="maxcappi">MAXCAPPI</option></select><select id="radarSelect"><option value="all">Todos os radares</option></select></div>
  <div class="loopbar"><button id="playLoop">▶ Iniciar loop</button><button id="previousFrame">◀ Anterior</button><button id="nextFrame">Próximo ▶</button><button id="stopLoop">Parar loop</button><select id="loopSpeed"><option value="1200">Lento</option><option value="700" selected>Normal</option><option value="350">Rápido</option></select><span id="loopInfo" class="small">Aguardando imagens</span></div>
 </div>
 <div id="status" role="status">Preparando mapa...</div><div id="map"></div>
@@ -170,6 +170,7 @@ a{color:var(--yellow)}.statusline{padding:10px;background:#151515;border-left:3p
 "use strict";
 const API_KEY="7qwre4IVDPRVlfPMxLyh25wFBnExIT0XictqRqLt";
 const RADAR_API="https://api-redemet.decea.mil.br/produtos/radar/10km";
+const MAXCAPPI_API="https://api-redemet.decea.mil.br/produtos/radar/maxcappi";
 /* Endereço do serviço Python. Se hospedar o serviço, troque por sua URL HTTPS. */
 const SOUNDING_API="/api/sounding";
 /* Após publicar python_backend no Render, substitua pela URL HTTPS real, sem barra final. */
@@ -472,8 +473,9 @@ async function refreshRadar(){
   const ctl=new AbortController(),timeout=setTimeout(()=>ctl.abort(),15000);
   try{
     
-    status("Consultando a REDEMET...");
-    const url=new URL(RADAR_API);
+    status("Consultando a REDEMET · "+( $("radarProduct").value==="maxcappi"?"MAXCAPPI":"Reflectividade 10 km")+"...");
+    const product=$("radarProduct").value;
+    const url=new URL(product==="maxcappi"?MAXCAPPI_API:RADAR_API);
     url.searchParams.set("api_key",API_KEY);
     url.searchParams.set("data",utcHour());
     url.searchParams.set("anima","15");
@@ -496,7 +498,8 @@ async function refreshRadar(){
   }
 }
 function utcHour(){const d=new Date();return d.getUTCFullYear()+String(d.getUTCMonth()+1).padStart(2,"0")+String(d.getUTCDate()).padStart(2,"0")+String(d.getUTCHours()).padStart(2,"0")}
-$("refresh").onclick=refreshRadar;$("radarSelect").onchange=()=>{renderRadar();showFrame(0);teleportToSelectedRadar()};$("toggle").onclick=()=>{radarVisible=!radarVisible;$("toggle").textContent=radarVisible?"Ocultar refletividade":"Mostrar refletividade";renderRadar()};
+$("refresh").onclick=refreshRadar;
+$("radarProduct").onchange=()=>{frames=[];radarItems=[];frameIndex=0;radarGroup&&radarGroup.clearLayers();$("loopInfo").textContent="Carregando produto selecionado...";refreshRadar();};$("radarSelect").onchange=()=>{renderRadar();showFrame(0);teleportToSelectedRadar()};$("toggle").onclick=()=>{radarVisible=!radarVisible;$("toggle").textContent=radarVisible?"Ocultar refletividade":"Mostrar refletividade";renderRadar()};
 function stopLoop(){if(loopTimer!==null)clearInterval(loopTimer);loopTimer=null;$("playLoop").textContent="▶ Iniciar loop"}
 function showFrame(step){
   if(!frames.length){$("loopInfo").textContent="Atualize o radar primeiro.";return}
