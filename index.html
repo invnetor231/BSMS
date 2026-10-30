@@ -104,12 +104,12 @@ a{color:var(--yellow)}.statusline{padding:10px;background:#151515;border-left:3p
   </div>
   <div id="capeMap" aria-label="Mapa de previsão de CAPE sobre o Brasil"></div>
   <div class="capeLegend">
-    <span><i class="capeSwatch" style="background:#e5e5e5"></i>0</span>
-    <span><i class="capeSwatch" style="background:#8bd3ff"></i>1–499</span>
-    <span><i class="capeSwatch" style="background:#42b883"></i>500–999</span>
-    <span><i class="capeSwatch" style="background:#f4df35"></i>1000–1999</span>
-    <span><i class="capeSwatch" style="background:#f28c28"></i>2000–2999</span>
-    <span><i class="capeSwatch" style="background:#e34242"></i>3000+</span>
+    <span><i class="capeSwatch" style="background:#fff"></i>0</span>
+    <span><i class="capeSwatch" style="background:#409e46"></i>1–499</span>
+    <span><i class="capeSwatch" style="background:#6fb737"></i>500–999</span>
+    <span><i class="capeSwatch" style="background:#eeda23"></i>1000–1999</span>
+    <span><i class="capeSwatch" style="background:#ffb118"></i>2000–2999</span>
+    <span><i class="capeSwatch" style="background:#ef3130"></i>3000+</span>
   </div>
   <div class="capeMetric" id="capeDetails">Selecione um ponto no mapa para consultar o valor de CAPE e o horário válido.</div>
   <p class="small">A camada utiliza pontos de grade do modelo e círculos coloridos, não uma imagem de radar. A resolução espacial é limitada pela grade consultada. Os valores dependem da disponibilidade do serviço externo.</p>
@@ -213,7 +213,7 @@ $("wrfButton").onclick=()=>{showTab("wrf");if($("wrfFrame").src==="about:blank")
 $("skewButton").onclick=()=>showTab("skew");
 $("backRadar").onclick=$("backRadar2").onclick=()=>showTab("radar");
 
-let capeMap=null,capeLayer=null,capeLoaded=false,capeTimes=[],capeRecords=[];
+let capeMap=null,capeLayer=null,capeOverlay=null,capeLoaded=false,capeTimes=[],capeRecords=[];
 function capeStatus(message){$("capeStatus").textContent=message}
 function initCapeMap(){
   if(capeMap)return;
@@ -223,19 +223,19 @@ function initCapeMap(){
   capeLayer=L.layerGroup().addTo(capeMap);
 }
 function capeColor(v){
-  if(!Number.isFinite(v)||v<=0)return "#e5e5e5";
-  if(v<500)return "#8bd3ff";
-  if(v<1000)return "#42b883";
-  if(v<2000)return "#f4df35";
-  if(v<3000)return "#f28c28";
-  return "#e34242";
+  if(!Number.isFinite(v)||v<1)return [255,255,255,0];
+  if(v<500)return [64,158,70,235];
+  if(v<1000)return [111,183,55,240];
+  if(v<1500)return [238,218,35,242];
+  if(v<2000)return [255,177,24,244];
+  if(v<3000)return [239,49,48,246];
+  return [194,45,190,248];
 }
 function buildCapeGrid(){
-  // Grade enxuta e regular: cada latitude corresponde à longitude da mesma posição.
-  // A amostragem evita uma requisição excessivamente grande no navegador.
+  // Grade de 100 pontos consultados diretamente ao modelo.
   const points=[];
-  for(let lat=-5;lat>=-30;lat-=5){
-    for(let lon=-75;lon<=-35;lon+=10)points.push({lat,lon});
+  for(let lat=-5;lat>=-35;lat-=30/9){
+    for(let lon=-75;lon<=-35;lon+=40/9)points.push({lat,lon});
   }
   return points;
 }
@@ -250,24 +250,66 @@ function populateCapeTimes(times){
   else select.value="0";
 }
 function renderCape(){
-  if(!capeMap||!capeLayer||!capeTimes.length)return;
-  capeLayer.clearLayers();
-  const ti=Math.max(0,Number($("capeTime").value)||0);
-  const time=capeTimes[ti];
-  let count=0;
-  capeRecords.forEach(record=>{
-    const value=record.values[ti];
-    if(!Number.isFinite(value))return;
-    count++;
-    const marker=L.circleMarker([record.lat,record.lon],{
-      radius:13,stroke:true,weight:1,color:"#151515",opacity:.9,
-      fillColor:capeColor(value),fillOpacity:.78
-    }).addTo(capeLayer);
-    marker.bindPopup("<b>CAPE: "+Math.round(value)+" J/kg</b><br>Latitude: "+record.lat.toFixed(1)+"°<br>Longitude: "+record.lon.toFixed(1)+"°<br>Validade: "+formatCapeTime(time));
-    marker.on("click",()=>{$("capeDetails").textContent="CAPE: "+Math.round(value)+" J/kg · Ponto: "+record.lat.toFixed(1)+"°, "+record.lon.toFixed(1)+"° · Validade: "+formatCapeTime(time)+". Fonte: previsão numérica."});
-  });
-  $("capeDetails").textContent=count+" pontos de grade exibidos · Validade: "+formatCapeTime(time)+". Clique em um ponto para ver o valor.";
-  capeStatus(count+" pontos com dados do modelo · "+formatCapeTime(time));
+  if(!capeMap||!capeTimes.length||!capeRecords.length)return;
+  if(capeOverlay){capeMap.removeLayer(capeOverlay);capeOverlay=null;}
+  const ti=Math.max(0,Number($("capeTime").value)||0),time=capeTimes[ti];
+  const valid=capeRecords.map(r=>({lat:r.lat,lon:r.lon,v:r.values[ti]}))
+    .filter(p=>Number.isFinite(p.v));
+  if(valid.length<4){$("capeDetails").textContent="Dados insuficientes para gerar o campo CAPE.";capeStatus("Poucos pontos válidos do modelo.");return;}
+  const W=640,H=520, north=6,south=-36,west=-80,east=-30;
+  const canvas=document.createElement("canvas");canvas.width=W;canvas.height=H;
+  const ctx=canvas.getContext("2d"),img=ctx.createImageData(W,H);
+  const field=Array.from({length:H},()=>new Float32Array(W));
+  for(let y=0;y<H;y++){
+    const lat=north-(y/(H-1))*(north-south);
+    for(let x=0;x<W;x++){
+      const lon=west+(x/(W-1))*(east-west);
+      let sum=0,weights=0,nearest=Infinity,nearestV=0;
+      for(const p of valid){
+        const dx=(lon-p.lon)*Math.cos(lat*Math.PI/180),dy=lat-p.lat;
+        const d2=dx*dx+dy*dy;
+        if(d2<nearest){nearest=d2;nearestV=p.v;}
+        const w=1/Math.pow(d2+0.12,1.65);
+        sum+=p.v*w;weights+=w;
+      }
+      const v=nearest<0.0001?nearestV:sum/weights;
+      field[y][x]=v;
+      const c=capeColor(v),i=(y*W+x)*4;
+      img.data[i]=c[0];img.data[i+1]=c[1];img.data[i+2]=c[2];img.data[i+3]=c[3];
+    }
+  }
+  ctx.putImageData(img,0,0);
+  // Isolinhas de CAPE calculadas sobre o campo interpolado.
+  const levels=[500,1000,1500,2000,3000];
+  ctx.lineWidth=1.35;ctx.strokeStyle="rgba(35,35,35,.82)";
+  for(const level of levels){
+    ctx.beginPath();
+    for(let y=0;y<H-1;y+=2)for(let x=0;x<W-1;x+=2){
+      const v=[field[y][x],field[y][x+2],field[y+2][x+2],field[y+2][x]];
+      const pts=[[x,y],[x+2,y],[x+2,y+2],[x,y+2]],cross=[];
+      for(let k=0;k<4;k++){
+        const n=(k+1)%4,a=v[k],b=v[n];
+        if((a<level&&b>=level)||(b<level&&a>=level)){
+          const t=(level-a)/(b-a);
+          cross.push([pts[k][0]+t*(pts[n][0]-pts[k][0]),pts[k][1]+t*(pts[n][1]-pts[k][1])]);
+        }
+      }
+      if(cross.length>=2){ctx.moveTo(cross[0][0],cross[0][1]);ctx.lineTo(cross[1][0],cross[1][1]);}
+      if(cross.length===4){ctx.moveTo(cross[2][0],cross[2][1]);ctx.lineTo(cross[3][0],cross[3][1]);}
+    }
+    ctx.stroke();
+  }
+  // Rótulos discretos de isolinhas, no padrão de mapas meteorológicos.
+  ctx.font="bold 12px Arial";ctx.textAlign="center";ctx.textBaseline="middle";
+  const labels=[["500",0.17,0.32],["1000",0.76,0.48],["1500",0.24,0.58],["2000",0.62,0.67],["3000",0.48,0.78]];
+  for(const [label,fx,fy] of labels){
+    const x=fx*W,y=fy*H;ctx.fillStyle="rgba(255,255,255,.82)";
+    ctx.fillRect(x-19,y-9,38,18);ctx.fillStyle="#222";ctx.fillText(label,x,y);
+  }
+  capeOverlay=L.imageOverlay(canvas.toDataURL("image/png"),[[south,west],[north,east]],{opacity:.92,interactive:false});
+  capeOverlay.addTo(capeMap);
+  $("capeDetails").textContent="Campo CAPE interpolado a partir de "+valid.length+" pontos reais do modelo · Isolinhas em J/kg · Validade: "+formatCapeTime(time)+".";
+  capeStatus("Campo CAPE · "+valid.length+" pontos do modelo · "+formatCapeTime(time));
 }
 async function readCapeResponse(response){
   const body=await response.text();
