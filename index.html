@@ -275,8 +275,8 @@ function renderCape(){
       }
       const v=nearest<0.0001?nearestV:sum/weights;
       field[y][x]=v;
-      const c=capeColor(v),i=(y*W+x)*4;
-      img.data[i]=c[0];img.data[i+1]=c[1];img.data[i+2]=c[2];img.data[i+3]=c[3];
+      const c=capeColor(v)||[255,255,255,0],i=(y*W+x)*4;
+      img.data[i]=c[0]??255;img.data[i+1]=c[1]??255;img.data[i+2]=c[2]??255;img.data[i+3]=c[3]??0;
     }
   }
   ctx.putImageData(img,0,0);
@@ -296,7 +296,7 @@ function renderCape(){
         }
       }
       if(cross.length>=2){ctx.moveTo(cross[0][0],cross[0][1]);ctx.lineTo(cross[1][0],cross[1][1]);}
-      if(cross.length===4){ctx.moveTo(cross[2][0],cross[2][1]);ctx.lineTo(cross[3][0],cross[3][1]);}
+      if(cross.length===4 && cross[2] && cross[3]){ctx.moveTo(cross[2][0],cross[2][1]);ctx.lineTo(cross[3][0],cross[3][1]);}
     }
     ctx.stroke();
   }
