@@ -2,10 +2,10 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BSMS — Monitoramento Meteorológico</title>
+<title>BSN — Monitoramento Meteorológico</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
-:root{--yellow:#ffd400;--bg:#101010;--panel:#1b1b1b}
+:root{--yellow:#35d07f;--bg:#070b09;--panel:#101a14;--panel-2:#14231a;--line:#243b2d;--muted:#91a99a;--text:#e8f2eb;--green:#1f9d62;--green-bright:#45e08c}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#eee;font-family:Arial,sans-serif}
 header{padding:12px;display:flex;gap:12px;align-items:center;background:#080808;border-bottom:2px solid var(--yellow)}
 .logo{font-size:30px;font-weight:bold;color:var(--yellow)}.subtitle{font-size:11px;color:#ccc}
@@ -48,14 +48,123 @@ a{color:var(--yellow)}.statusline{padding:10px;background:#151515;border-left:3p
 .supportNote{font-size:12px!important;color:#aaa!important}
 #supportFeedback{min-height:18px;color:var(--yellow);font-size:13px}
 @media(max-width:420px){.mainHeader{align-items:flex-start}.brand{flex:1}.supportButton{width:100%}}
+
+/* BSN interface refresh: black + deep forest green */
+html{background:var(--bg);scroll-behavior:smooth}
+body{
+  background:
+    radial-gradient(ellipse at 12% -10%,rgba(31,157,98,.16),transparent 38%),
+    linear-gradient(180deg,#080e0a 0%,#070b09 55%,#090f0b 100%);
+  color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+  letter-spacing:.01em
+}
+header.mainHeader{
+  position:relative;padding:17px clamp(14px,3vw,30px);
+  background:linear-gradient(115deg,#0c1710 0%,#0a100c 58%,#102219 100%);
+  border-bottom:1px solid #28553a;box-shadow:0 8px 28px rgba(0,0,0,.32)
+}
+header.mainHeader:after{
+  content:"";position:absolute;left:0;bottom:-1px;width:190px;height:2px;
+  background:linear-gradient(90deg,var(--green-bright),transparent)
+}
+.brand{gap:14px}
+.logo{
+  display:grid;place-items:center;width:58px;height:58px;border-radius:15px;
+  background:linear-gradient(145deg,#1b6c43,#103c27);border:1px solid #3ca96d;
+  color:#eafff1;font-size:25px;letter-spacing:.08em;
+  box-shadow:0 5px 22px rgba(25,150,83,.22)
+}
+.brand b{display:block;font-size:clamp(13px,2vw,17px);letter-spacing:.12em;color:#e8f5ec}
+.subtitle{margin-top:5px;color:#8eaa98;font-size:10px;letter-spacing:.16em}
+nav{
+  position:sticky;top:0;z-index:500;gap:8px;padding:11px clamp(12px,2vw,24px);
+  background:rgba(9,16,11,.94);border-bottom:1px solid #20372a;
+  backdrop-filter:blur(14px)
+}
+button,select,input{
+  background:#142019;color:#e8f2eb;border:1px solid #2b4535;border-radius:9px;
+  padding:10px 13px;font:inherit;font-size:13px;transition:border-color .18s,background .18s,transform .18s
+}
+button{font-weight:650;letter-spacing:.01em}
+button:hover{border-color:#45b979;background:#1a3022}
+button:active{transform:translateY(1px)}
+button.active,button.primary,.supportButton{
+  background:linear-gradient(135deg,#24965b,#176b40);color:#f3fff7;
+  border:1px solid #45bd7a;box-shadow:0 4px 14px rgba(20,135,73,.18)
+}
+button.active:hover,button.primary:hover,.supportButton:hover{background:linear-gradient(135deg,#2eae6b,#1b7a49)}
+nav button{min-width:92px}
+.toolbar,.loopbar,.capeToolbar{
+  gap:9px;padding:12px clamp(12px,2vw,22px);
+  background:#0d1711;border-bottom:1px solid #1c3023
+}
+#status{
+  margin:12px clamp(12px,2vw,22px);padding:11px 14px;
+  color:#9ee7b8;background:#102117;border:1px solid #234a32;
+  border-left:3px solid var(--green-bright);border-radius:8px
+}
+#map,#capeMap{
+  margin:0 clamp(10px,1.5vw,18px) 16px;width:calc(100% - clamp(20px,3vw,36px));
+  border:1px solid #294333;border-radius:13px;overflow:hidden;
+  box-shadow:0 12px 32px rgba(0,0,0,.28)
+}
+#map{height:calc(100dvh - 260px);min-height:390px;background:#0d1711}
+.panel,.capePanel{padding:clamp(14px,2.4vw,26px);max-width:1600px;margin:0 auto}
+.panel h2,.capePanel h2{color:#8fe2ad;font-size:clamp(19px,2.5vw,25px);letter-spacing:.015em;margin:5px 0 12px}
+.panel p,.capePanel p{line-height:1.6;color:#b7c9bd}
+.small{color:#8fa597;font-size:12px;line-height:1.5}
+.metrics{gap:11px;margin:15px 0}
+.metric,.capeMetric{
+  padding:15px;background:linear-gradient(145deg,#122018,#0d1711);
+  border:1px solid #294333;border-radius:11px;box-shadow:0 5px 16px rgba(0,0,0,.16)
+}
+.metric strong{color:#74d99b;font-size:11px;text-transform:uppercase;letter-spacing:.1em}
+.metric span{color:#e0ece3}
+.capeToolbar{border:1px solid #294333;border-radius:11px;margin:14px 0}
+#capeMap{height:calc(100dvh - 310px);min-height:430px;margin:14px 0}
+.capeLegend{gap:12px;background:#0e1912;border:1px solid #294333;border-radius:10px}
+.capeLegend span{color:#c5d6ca}
+.capeSwatch{border-color:#52715d}
+.capeMetric{margin:12px 0;color:#d6e5da}
+.statusline{background:#102117;border:1px solid #294333;border-left:3px solid var(--green-bright);border-radius:8px;color:#c9e7d2}
+table{color:#d8e5dc}
+td,th{border-color:#294333;padding:9px}
+th{color:#9be7b5;background:#14251a}
+iframe{border:1px solid #294333;border-radius:12px}
+a{color:#78dda0}
+footer{
+  margin-top:22px;padding:18px clamp(14px,3vw,30px);
+  background:#080f0a;border-top:1px solid #254331;color:#82998a;
+  letter-spacing:.025em;line-height:1.7
+}
+.supportCard{
+  background:linear-gradient(145deg,#132219,#0b130e);border:1px solid #3b9c63;
+  border-radius:16px
+}
+.supportCard h2{color:#8fe2ad}
+.supportAmounts button.selected{background:#1d8c53;color:white;border-color:#4ac17a}
+.pixKey{background:#080f0a;border-color:#31513c}
+#supportFeedback{color:#8fe2ad}
+@media(max-width:650px){
+  header.mainHeader{padding:13px}
+  .logo{width:49px;height:49px;font-size:21px}
+  nav{overflow-x:auto;flex-wrap:nowrap}
+  nav button{flex:0 0 auto}
+  .toolbar,.loopbar,.capeToolbar{align-items:stretch}
+  .toolbar button,.loopbar button{flex:1 1 auto}
+  #map{height:calc(100dvh - 325px);min-height:360px}
+  #capeMap{height:64vh;min-height:390px}
+  .panel,.capePanel{padding:13px}
+}
+
 </style>
 </head>
 <body>
-<header class="mainHeader"><div class="brand"><div class="logo">BSMS</div><div><b>MONITORAMENTO METEOROLÓGICO</b><div class="subtitle">RADAR + WRF + SKEW-T</div></div></div><button id="supportButton" class="supportButton" type="button">♡ APOIAR</button></header>
+<header class="mainHeader"><div class="brand"><div class="logo">BSN</div><div><b>MONITORAMENTO METEOROLÓGICO</b><div class="subtitle">RADAR + WRF + SKEW-T</div></div></div><button id="supportButton" class="supportButton" type="button">♡ APOIAR</button></header>
 <nav><button id="radarButton" class="active">Radar</button><button id="capeButton">CAPE</button><button id="wrfButton">WRF CPTEC</button><button id="skewButton">Skew-T</button></nav>
 <div id="supportModal" class="supportModal" role="dialog" aria-modal="true" aria-labelledby="supportTitle">
   <div class="supportCard">
-    <h2 id="supportTitle">Apoie o BSMS</h2>
+    <h2 id="supportTitle">Apoie o BSN</h2>
     <p>Seu apoio ajuda a manter o monitoramento meteorológico. Escolha um valor sugerido e faça o Pix pelo aplicativo do seu banco.</p>
     <div class="supportAmounts" aria-label="Valor sugerido">
       <button type="button" data-amount="5">R$ 5</button>
@@ -70,7 +179,7 @@ a{color:var(--yellow)}.statusline{padding:10px;background:#151515;border-left:3p
       <button type="button" id="closeSupport">Fechar</button>
     </div>
     <p id="supportFeedback" role="status" aria-live="polite"></p>
-    <p class="supportNote">O valor selecionado é apenas uma sugestão. Para concluir, abra o app do seu banco, faça um Pix usando a chave acima e confira o nome do destinatário antes de confirmar. O BSMS não recebe confirmação automática do pagamento.</p>
+    <p class="supportNote">O valor selecionado é apenas uma sugestão. Para concluir, abra o app do seu banco, faça um Pix usando a chave acima e confira o nome do destinatário antes de confirmar. O BSN não recebe confirmação automática do pagamento.</p>
   </div>
 </div>
 <div id="radarControls">
@@ -122,7 +231,7 @@ a{color:var(--yellow)}.statusline{padding:10px;background:#151515;border-left:3p
 </section>
 <section id="skewPanel" class="panel">
 <h2>Skew-T / Log-P — sondagem automática</h2>
-<p class="small">Consulta radiossondagens observadas de estações brasileiras identificadas por número WMO. A disponibilidade varia por estação e horário; sem observação válida, o BSMS não desenha perfil. A consulta usa uma função da Netlify para acessar a fonte de radiossondagens observadas.</p>
+<p class="small">Consulta radiossondagens observadas de estações brasileiras identificadas por número WMO. A disponibilidade varia por estação e horário; sem observação válida, o BSN não desenha perfil. A consulta usa uma função da Netlify para acessar a fonte de radiossondagens observadas.</p>
 <div class="toolbar">
 <label>Estação <select id="stationSelect">
 <option value="83746">RIO DE JANEIRO/RJ — GALEÃO — 83746</option>
@@ -165,7 +274,7 @@ a{color:var(--yellow)}.statusline{padding:10px;background:#151515;border-left:3p
 <h3>Índices termodinâmicos</h3><div class="tableWrap"><table><thead><tr><th>Índice</th><th>Valor</th></tr></thead><tbody id="indicesBody"><tr><td colspan="2">Sem dados.</td></tr></tbody></table></div>
 <h3>Níveis observados</h3><div class="tableWrap"><table><thead><tr><th>Pressão (hPa)</th><th>Temperatura (°C)</th><th>Ponto de orvalho (°C)</th></tr></thead><tbody id="levelsBody"><tr><td colspan="3">Sem dados.</td></tr></tbody></table></div>
 </section>
-<footer>Radar: REDEMET/DECEA · Modelo: CPTEC/INPE · CAPE: Open-Meteo/modelo numérico · Skew-T: radiossondagens observadas · Estações WMO</footer>
+<footer>BSN · Radar: REDEMET/DECEA · Modelo: CPTEC/INPE · CAPE: Open-Meteo/modelo numérico · Skew-T: radiossondagens observadas · Estações WMO</footer>
 <script>
 "use strict";
 const API_KEY="7qwre4IVDPRVlfPMxLyh25wFBnExIT0XictqRqLt";
@@ -327,7 +436,7 @@ async function readCapeResponse(response){
 async function loadCape(){
   const button=$("loadCape");
   if(button)button.disabled=true;
-  capeStatus("Consultando CAPE pelo backend meteorológico do BSMS...");
+  capeStatus("Consultando CAPE pelo backend meteorológico do BSN...");
   try{
     initCapeMap();
     const points=buildCapeGrid();
@@ -361,8 +470,8 @@ async function loadCape(){
   }catch(error){
     const detail=error&&error.name==="AbortError"?"tempo limite de 40 segundos excedido":(error.message||"erro desconhecido");
     capeStatus("Falha ao carregar CAPE: "+detail+". Nenhum valor fictício foi desenhado.");
-    $("capeDetails").textContent="Sem dados de CAPE disponíveis. Verifique o serviço de backend do BSMS no Render.";
-    console.error("BSMS CAPE:",error&&error.stack?error.stack:error);
+    $("capeDetails").textContent="Sem dados de CAPE disponíveis. Verifique o serviço de backend do BSN no Render.";
+    console.error("BSN CAPE:",error&&error.stack?error.stack:error);
   }finally{
     if(button)button.disabled=false;
   }
@@ -624,7 +733,7 @@ async function ensureLeaflet(){
   }catch(e){
     if(window.__bsmsStartupFinished)window.__bsmsStartupFinished();
     status("Erro ao iniciar mapa: "+e.message+". Verifique a conexão, o carregamento do Leaflet e o deploy da Netlify.");
-    console.error("BSMS inicialização:",e);
+    console.error("BSN inicialização:",e);
   }
 })();
 </script></body></html>
