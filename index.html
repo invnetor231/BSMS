@@ -235,7 +235,7 @@ function buildCapeGrid(){
   // A amostragem evita uma requisição excessivamente grande no navegador.
   const points=[];
   for(let lat=-5;lat>=-30;lat-=5){
-    for(let lon=-75;lon>=-35;lon+=10)points.push({lat,lon});
+    for(let lon=-75;lon<=-35;lon+=10)points.push({lat,lon});
   }
   return points;
 }
