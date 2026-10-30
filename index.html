@@ -20,6 +20,16 @@ button{cursor:pointer}button.active,button.primary{background:var(--yellow);colo
 table{width:100%;border-collapse:collapse;font-size:13px}td,th{border:1px solid #444;padding:7px;text-align:left}
 th{color:var(--yellow);background:#292929}footer{padding:12px;border-top:1px solid #333;color:#aaa;font-size:11px}
 a{color:var(--yellow)}.statusline{padding:10px;background:#151515;border-left:3px solid var(--yellow);margin:10px 0}
+.capePanel{padding:14px}
+.capePanel h2{color:var(--yellow)}
+.capeToolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px;background:var(--panel)}
+#capeMap{height:calc(100dvh - 290px);min-height:420px;background:#222;border:1px solid #333}
+.capeLegend{display:flex;gap:7px;flex-wrap:wrap;padding:12px;background:#171717}
+.capeLegend span{display:flex;align-items:center;gap:5px;font-size:12px;color:#ddd}
+.capeSwatch{display:inline-block;width:18px;height:12px;border:1px solid #777;border-radius:2px}
+.capeMetric{padding:12px;background:#171717;border:1px solid #333;margin:10px 0;color:#ddd}
+@media(max-width:600px){#capeMap{height:65vh;min-height:380px}}
+
 @media(max-width:600px){.logo{font-size:25px}#map{height:calc(100dvh - 300px)}}
 .mainHeader{justify-content:space-between;flex-wrap:wrap}
 .brand{display:flex;gap:12px;align-items:center;min-width:0}
@@ -42,7 +52,7 @@ a{color:var(--yellow)}.statusline{padding:10px;background:#151515;border-left:3p
 </head>
 <body>
 <header class="mainHeader"><div class="brand"><div class="logo">BSMS</div><div><b>MONITORAMENTO METEOROLÓGICO</b><div class="subtitle">RADAR + WRF + SKEW-T</div></div></div><button id="supportButton" class="supportButton" type="button">♡ APOIAR</button></header>
-<nav><button id="radarButton" class="active">Radar</button><button id="wrfButton">WRF CPTEC</button><button id="skewButton">Skew-T</button></nav>
+<nav><button id="radarButton" class="active">Radar</button><button id="capeButton">CAPE</button><button id="wrfButton">WRF CPTEC</button><button id="skewButton">Skew-T</button></nav>
 <div id="supportModal" class="supportModal" role="dialog" aria-modal="true" aria-labelledby="supportTitle">
   <div class="supportCard">
     <h2 id="supportTitle">Apoie o BSMS</h2>
@@ -77,6 +87,34 @@ a{color:var(--yellow)}.statusline{padding:10px;background:#151515;border-left:3p
   window.addEventListener("unhandledrejection",e=>{const el=document.getElementById("status");if(el)el.textContent="Falha JavaScript: "+String(e.reason&&e.reason.message||e.reason||"erro não identificado");});
 })();
 </script>
+
+<section id="capePanel" class="panel capePanel">
+  <h2>CAPE — Energia Potencial Convectiva Disponível</h2>
+  <p>Produto meteorológico independente. O mapa apresenta valores de CAPE previstos por modelo numérico, em J/kg. Não representa observações de radar nem uma sondagem medida.</p>
+  <div class="capeToolbar">
+    <label>Horário UTC <select id="capeTime"></select></label>
+    <button id="loadCape" class="primary" type="button">Atualizar mapa CAPE</button>
+    <span id="capeStatus" class="small" role="status">Aguardando consulta dos dados numéricos...</span>
+  </div>
+  <div class="metrics">
+    <div class="metric"><strong>Produto</strong><span>CAPE horário</span></div>
+    <div class="metric"><strong>Unidade</strong><span>J/kg</span></div>
+    <div class="metric"><strong>Fonte</strong><span>Open-Meteo / modelo numérico</span></div>
+    <div class="metric"><strong>Natureza</strong><span>Previsão, não observação</span></div>
+  </div>
+  <div id="capeMap" aria-label="Mapa de previsão de CAPE sobre o Brasil"></div>
+  <div class="capeLegend">
+    <span><i class="capeSwatch" style="background:#e5e5e5"></i>0</span>
+    <span><i class="capeSwatch" style="background:#8bd3ff"></i>1–499</span>
+    <span><i class="capeSwatch" style="background:#42b883"></i>500–999</span>
+    <span><i class="capeSwatch" style="background:#f4df35"></i>1000–1999</span>
+    <span><i class="capeSwatch" style="background:#f28c28"></i>2000–2999</span>
+    <span><i class="capeSwatch" style="background:#e34242"></i>3000+</span>
+  </div>
+  <div class="capeMetric" id="capeDetails">Selecione um ponto no mapa para consultar o valor de CAPE e o horário válido.</div>
+  <p class="small">A camada utiliza pontos de grade do modelo e círculos coloridos, não uma imagem de radar. A resolução espacial é limitada pela grade consultada. Os valores dependem da disponibilidade do serviço externo.</p>
+</section>
+
 <section id="wrfPanel" class="panel">
 <h2>WRF — CPTEC/INPE</h2><p>Portal oficial do modelo numérico.</p>
 <p><a href="https://previsaonumerica.cptec.inpe.br/wrf/" target="_blank" rel="noopener"><button class="primary">Abrir WRF no CPTEC</button></a> <button id="backRadar">Voltar ao radar</button></p>
@@ -127,7 +165,7 @@ a{color:var(--yellow)}.statusline{padding:10px;background:#151515;border-left:3p
 <h3>Índices termodinâmicos</h3><div class="tableWrap"><table><thead><tr><th>Índice</th><th>Valor</th></tr></thead><tbody id="indicesBody"><tr><td colspan="2">Sem dados.</td></tr></tbody></table></div>
 <h3>Níveis observados</h3><div class="tableWrap"><table><thead><tr><th>Pressão (hPa)</th><th>Temperatura (°C)</th><th>Ponto de orvalho (°C)</th></tr></thead><tbody id="levelsBody"><tr><td colspan="3">Sem dados.</td></tr></tbody></table></div>
 </section>
-<footer>Radar: REDEMET/DECEA · Modelo: CPTEC/INPE · Skew-T: radiossondagens observadas · Estações WMO</footer>
+<footer>Radar: REDEMET/DECEA · Modelo: CPTEC/INPE · CAPE: Open-Meteo/modelo numérico · Skew-T: radiossondagens observadas · Estações WMO</footer>
 <script>
 "use strict";
 const API_KEY="7qwre4IVDPRVlfPMxLyh25wFBnExIT0XictqRqLt";
@@ -135,7 +173,8 @@ const RADAR_API="https://api-redemet.decea.mil.br/produtos/radar/10km";
 /* Endereço do serviço Python. Se hospedar o serviço, troque por sua URL HTTPS. */
 const SOUNDING_API="/api/sounding";
 /* Após publicar python_backend no Render, substitua pela URL HTTPS real, sem barra final. */
-const SHARPPY_API="https://SEU-SERVICO-SHARPPY.onrender.com";
+const SHARPPY_API="https://bsms-gntn.onrender.com";
+const CAPE_API="https://bsms-gntn.onrender.com/cape";
 const $=id=>document.getElementById(id);
 // Apoio voluntário via Pix. O pagamento é autorizado pelo usuário no app bancário.
 let supportAmount="10";
@@ -166,8 +205,123 @@ $("copyPix").addEventListener("click",async()=>{
 let map=null,radarGroup=null,radarItems=[],frames=[],radarVisible=true,busy=false,frameIndex=0,loopTimer=null,currentTab="radar",soundingRows=[];
 function status(m){$("status").textContent=m}function soundingStatus(m){$("soundingStatus").textContent=m}
 function initMap(){if(map)return true;if(typeof L==="undefined")throw Error("Biblioteca Leaflet não carregou.");map=L.map("map").setView([-14.2,-51.9],4);L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap contributors"}).addTo(map);radarGroup=L.layerGroup().addTo(map);map.whenReady(()=>status("Mapa pronto. Preparando consulta à REDEMET..."));return true}
-function showTab(tab){currentTab=tab;$("map").style.display=tab==="radar"?"block":"none";$("radarControls").style.display=tab==="radar"?"block":"none";$("status").style.display=tab==="radar"?"block":"none";$("wrfPanel").style.display=tab==="wrf"?"block":"none";$("skewPanel").style.display=tab==="skew"?"block":"none";$("radarButton").classList.toggle("active",tab==="radar");$("wrfButton").classList.toggle("active",tab==="wrf");$("skewButton").classList.toggle("active",tab==="skew");if(tab==="radar"){try{initMap();setTimeout(()=>map&&map.invalidateSize(),100)}catch(e){status("Erro no mapa: "+e.message)}}if(tab==="skew")drawSkew()}
-$("radarButton").onclick=()=>showTab("radar");$("wrfButton").onclick=()=>{showTab("wrf");if($("wrfFrame").src==="about:blank")$("wrfFrame").src="https://previsaonumerica.cptec.inpe.br/wrf/"};$("skewButton").onclick=()=>showTab("skew");$("backRadar").onclick=$("backRadar2").onclick=()=>showTab("radar");
+function showTab(tab){currentTab=tab;$("map").style.display=tab==="radar"?"block":"none";$("radarControls").style.display=tab==="radar"?"block":"none";$("status").style.display=tab==="radar"?"block":"none";$("capePanel").style.display=tab==="cape"?"block":"none";$("wrfPanel").style.display=tab==="wrf"?"block":"none";$("skewPanel").style.display=tab==="skew"?"block":"none";$("radarButton").classList.toggle("active",tab==="radar");$("capeButton").classList.toggle("active",tab==="cape");$("wrfButton").classList.toggle("active",tab==="wrf");$("skewButton").classList.toggle("active",tab==="skew");if(tab==="radar"){try{initMap();setTimeout(()=>map&&map.invalidateSize(),100)}catch(e){status("Erro no mapa: "+e.message)}}if(tab==="cape"){try{initCapeMap();setTimeout(()=>capeMap&&capeMap.invalidateSize(),100);if(!capeLoaded)loadCape()}catch(e){capeStatus("Erro ao abrir mapa CAPE: "+e.message)}}if(tab==="skew")drawSkew()}
+
+$("radarButton").onclick=()=>showTab("radar");
+$("capeButton").onclick=()=>showTab("cape");
+$("wrfButton").onclick=()=>{showTab("wrf");if($("wrfFrame").src==="about:blank")$("wrfFrame").src="https://previsaonumerica.cptec.inpe.br/wrf/"};
+$("skewButton").onclick=()=>showTab("skew");
+$("backRadar").onclick=$("backRadar2").onclick=()=>showTab("radar");
+
+let capeMap=null,capeLayer=null,capeLoaded=false,capeTimes=[],capeRecords=[];
+function capeStatus(message){$("capeStatus").textContent=message}
+function initCapeMap(){
+  if(capeMap)return;
+  if(typeof L==="undefined")throw Error("Leaflet não carregou.");
+  capeMap=L.map("capeMap").setView([-14.2,-51.9],4);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:12,attribution:"© OpenStreetMap contributors"}).addTo(capeMap);
+  capeLayer=L.layerGroup().addTo(capeMap);
+}
+function capeColor(v){
+  if(!Number.isFinite(v)||v<=0)return "#e5e5e5";
+  if(v<500)return "#8bd3ff";
+  if(v<1000)return "#42b883";
+  if(v<2000)return "#f4df35";
+  if(v<3000)return "#f28c28";
+  return "#e34242";
+}
+function buildCapeGrid(){
+  // Grade enxuta e regular: cada latitude corresponde à longitude da mesma posição.
+  // A amostragem evita uma requisição excessivamente grande no navegador.
+  const points=[];
+  for(let lat=-5;lat>=-30;lat-=5){
+    for(let lon=-75;lon>=-35;lon+=10)points.push({lat,lon});
+  }
+  return points;
+}
+function formatCapeTime(value){
+  return new Date(value).toLocaleString("pt-BR",{timeZone:"UTC",day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false})+" UTC";
+}
+function populateCapeTimes(times){
+  const select=$("capeTime"),previous=select.value;
+  select.replaceChildren();
+  times.forEach((t,i)=>select.add(new Option(formatCapeTime(t),String(i))));
+  if(previous&&Number(previous)<times.length)select.value=previous;
+  else select.value="0";
+}
+function renderCape(){
+  if(!capeMap||!capeLayer||!capeTimes.length)return;
+  capeLayer.clearLayers();
+  const ti=Math.max(0,Number($("capeTime").value)||0);
+  const time=capeTimes[ti];
+  let count=0;
+  capeRecords.forEach(record=>{
+    const value=record.values[ti];
+    if(!Number.isFinite(value))return;
+    count++;
+    const marker=L.circleMarker([record.lat,record.lon],{
+      radius:13,stroke:true,weight:1,color:"#151515",opacity:.9,
+      fillColor:capeColor(value),fillOpacity:.78
+    }).addTo(capeLayer);
+    marker.bindPopup("<b>CAPE: "+Math.round(value)+" J/kg</b><br>Latitude: "+record.lat.toFixed(1)+"°<br>Longitude: "+record.lon.toFixed(1)+"°<br>Validade: "+formatCapeTime(time));
+    marker.on("click",()=>{$("capeDetails").textContent="CAPE: "+Math.round(value)+" J/kg · Ponto: "+record.lat.toFixed(1)+"°, "+record.lon.toFixed(1)+"° · Validade: "+formatCapeTime(time)+". Fonte: previsão numérica."});
+  });
+  $("capeDetails").textContent=count+" pontos de grade exibidos · Validade: "+formatCapeTime(time)+". Clique em um ponto para ver o valor.";
+  capeStatus(count+" pontos com dados do modelo · "+formatCapeTime(time));
+}
+async function readCapeResponse(response){
+  const body=await response.text();
+  if(!response.ok)throw Error("Backend CAPE respondeu HTTP "+response.status+(body?" · "+body.slice(0,220):" sem corpo."));
+  if(!body.trim())throw Error("O backend CAPE retornou uma resposta vazia.");
+  try{return JSON.parse(body)}
+  catch(parseError){throw Error("O backend CAPE retornou JSON inválido: "+body.slice(0,220))}
+}
+async function loadCape(){
+  const button=$("loadCape");
+  if(button)button.disabled=true;
+  capeStatus("Consultando CAPE pelo backend meteorológico do BSMS...");
+  try{
+    initCapeMap();
+    const points=buildCapeGrid();
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),40000);
+    let payload;
+    try{
+      const response=await fetch(CAPE_API,{
+        method:"POST",
+        cache:"no-store",
+        headers:{"Content-Type":"application/json","Accept":"application/json"},
+        body:JSON.stringify({latitude:points.map(p=>p.lat),longitude:points.map(p=>p.lon)}),
+        signal:controller.signal
+      });
+      payload=await readCapeResponse(response);
+    }finally{clearTimeout(timeout)}
+    const locations=Array.isArray(payload.locations)?payload.locations:[];
+    if(!locations.length)throw Error(payload.error||"O backend não retornou pontos de CAPE.");
+    const first=locations.find(item=>item&&item.hourly&&Array.isArray(item.hourly.time));
+    if(!first)throw Error("A resposta não contém a série horária de CAPE.");
+    capeTimes=first.hourly.time;
+    capeRecords=locations.map((item,index)=>({
+      lat:Number(item.latitude??points[index]?.lat),
+      lon:Number(item.longitude??points[index]?.lon),
+      values:(item.hourly?.cape||[]).map(v=>v===null||v===undefined?NaN:Number(v))
+    })).filter(r=>Number.isFinite(r.lat)&&Number.isFinite(r.lon)&&r.values.length);
+    if(!capeRecords.length)throw Error("Nenhum ponto de grade válido foi recebido.");
+    populateCapeTimes(capeTimes);
+    renderCape();
+    capeLoaded=true;
+  }catch(error){
+    const detail=error&&error.name==="AbortError"?"tempo limite de 40 segundos excedido":(error.message||"erro desconhecido");
+    capeStatus("Falha ao carregar CAPE: "+detail+". Nenhum valor fictício foi desenhado.");
+    $("capeDetails").textContent="Sem dados de CAPE disponíveis. Verifique o serviço de backend do BSMS no Render.";
+    console.error("BSMS CAPE:",error);
+  }finally{
+    if(button)button.disabled=false;
+  }
+}
+$("loadCape").onclick=loadCape;
+$("capeTime").onchange=renderCape;
+
 function radarBoundsValid(x){
   return x && typeof x==="object" && typeof x.path==="string" && x.path.trim() &&
     ["lat_min","lat_max","lon_min","lon_max"].every(k=>Number.isFinite(Number(x[k])));
