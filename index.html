@@ -275,8 +275,9 @@ function renderCape(){
       }
       const v=nearest<0.0001?nearestV:sum/weights;
       field[y][x]=v;
-      const c=capeColor(v)||[255,255,255,0],i=(y*W+x)*4;
-      img.data[i]=c[0]??255;img.data[i+1]=c[1]??255;img.data[i+2]=c[2]??255;img.data[i+3]=c[3]??0;
+      const [red=255,green=255,blue=255,alpha=0]=capeColor(v)||[];
+      const i=(y*W+x)*4;
+      img.data[i]=red;img.data[i+1]=green;img.data[i+2]=blue;img.data[i+3]=alpha;
     }
   }
   ctx.putImageData(img,0,0);
@@ -295,8 +296,12 @@ function renderCape(){
           cross.push([pts[k][0]+t*(pts[n][0]-pts[k][0]),pts[k][1]+t*(pts[n][1]-pts[k][1])]);
         }
       }
-      if(cross.length>=2){ctx.moveTo(cross[0][0],cross[0][1]);ctx.lineTo(cross[1][0],cross[1][1]);}
-      if(cross.length===4 && cross[2] && cross[3]){ctx.moveTo(cross[2][0],cross[2][1]);ctx.lineTo(cross[3][0],cross[3][1]);}
+      const [pointA,pointB]=cross;
+      if(pointA && pointB && Number.isFinite(pointA[0]) && Number.isFinite(pointA[1]) &&
+         Number.isFinite(pointB[0]) && Number.isFinite(pointB[1])){
+        ctx.moveTo(pointA[0],pointA[1]);
+        ctx.lineTo(pointB[0],pointB[1]);
+      }
     }
     ctx.stroke();
   }
@@ -357,7 +362,7 @@ async function loadCape(){
     const detail=error&&error.name==="AbortError"?"tempo limite de 40 segundos excedido":(error.message||"erro desconhecido");
     capeStatus("Falha ao carregar CAPE: "+detail+". Nenhum valor fictício foi desenhado.");
     $("capeDetails").textContent="Sem dados de CAPE disponíveis. Verifique o serviço de backend do BSMS no Render.";
-    console.error("BSMS CAPE:",error);
+    console.error("BSMS CAPE:",error&&error.stack?error.stack:error);
   }finally{
     if(button)button.disabled=false;
   }
